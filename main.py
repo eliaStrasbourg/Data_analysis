@@ -57,6 +57,12 @@ def load_data():
 
 
 
+# Layout
+
+st.set_page_config(layout="wide")
+input_col, data_col = st.columns([1, 3])
+
+
 # Data
 
 data_load_state = st.text('Loading data...')
@@ -74,11 +80,13 @@ selected_categories = []
 selected_language = 'English'
 
 
-with st.expander('Choose streamer categories'):
-    for category in categories:
-        selected_categories.append(st.checkbox(category))
+with input_col:
+    st.header('Inputs')
+    with st.expander('Choose streamer categories'):
+        for category in categories:
+            selected_categories.append(st.checkbox(category))
 
-selected_language = st.selectbox('Choose a streamer language', tuple(language))
+    selected_language = st.selectbox('Choose a streamer language', tuple(language))
 
 
 
@@ -90,23 +98,29 @@ filter_categories = []
 for i in range(len(selected_categories)):
     if selected_categories[i]:
         filter_categories.append(categories[i])
-gaming_groups = data[data['Category'].isin(filter_categories) & (data['Language'] == selected_language)]
-gaming_groups = gaming_groups.groupby('Category').mean().sort_values(by=['Average viewers'], ascending=False).head(10)
+
+filtered_data = data[data['Category'].isin(filter_categories) & (data['Language'] == selected_language)]
+
+gaming_groups = filtered_data.groupby('Category').mean().sort_values(by=['Average viewers'], ascending=False).head(10)
 gaming_average_viewers = gaming_groups['Average viewers']
+gaming_categories = gaming_groups.index.values
 
-if len(gaming_average_viewers.values) > 0:
-    fig, ax = plt.subplots(figsize=(20, 10))
+with data_col:
+    st.header('Data visualization')
+    if len(gaming_average_viewers.values) > 0:
+        fig, ax = plt.subplots(figsize=(20, 8))
 
-    gaming_average_viewers.plot(kind='bar', title='', ylabel='Average viewers', xlabel='Categories', ax=ax)
-    fig.patch.set_facecolor('#0e1117')
-    ax.set_title('Average viewers for each gaming categories', fontsize=15, color='white');
-    ax.patch.set_facecolor('#0e1117')
-    ax.spines['left'].set_color('white')
-    ax.spines['bottom'].set_color('white')
-    ax.xaxis.label.set_color('white')
-    ax.yaxis.label.set_color('white')
-    ax.tick_params(axis='x', colors='white')
-    ax.tick_params(axis='y', colors='white')
-    st.pyplot(fig)
-else:
-    st.text('No data to show')
+        gaming_average_viewers.plot(kind='bar', title='', ylabel='Average viewers', xlabel='Categories', ax=ax)
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_title('Average viewers for each gaming categories', fontsize=15, color='white');
+        ax.patch.set_facecolor('#0e1117')
+        ax.spines['left'].set_color('white')
+        ax.spines['bottom'].set_color('white')
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        st.dataframe(filtered_data[filtered_data['Category'].isin(categories)].sort_values(by=['Average viewers', 'Followers'], ascending=False))
+        st.pyplot(fig)
+    else:
+        st.text('No data to show')
