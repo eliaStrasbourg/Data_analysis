@@ -1,36 +1,112 @@
-import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import streamlit as st
+import requests
+import json
+import random
 
-st.title('Uber pickups in NYC')
+from datetime import datetime as dt
 
-DATE_COLUMN = 'date/time'
-DATA_URL = ('https://s3-us-west-2.amazonaws.com/'
-            'streamlit-demo-data/uber-raw-data-sep14.csv.gz')
+
+DATA_PATH = './twitchdata-update.csv'
 
 @st.cache
-def load_data(nrows):
-    data = pd.read_csv(DATA_URL, nrows=nrows)
-    lowercase = lambda x: str(x).lower()
-    data.rename(lowercase, axis='columns', inplace=True)
-    data[DATE_COLUMN] = pd.to_datetime(data[DATE_COLUMN])
-    return data
+def load_data():
+    original_df = pd.read_csv(DATA_PATH)
+    df = pd.DataFrame()
+
+    api_token = 'ifivjluh4a3qdjnhqeiqnhtreixvnm'
+    client_id = 'zguv1472ecuset2kk12dvgufrn5aa6'
+    headers = {
+        'Accept': 'application/vnd.twitchtv.v5+json',
+        'Client-ID': client_id,
+        'Authorization': f'Bearer {api_token}'
+    }
+
+    for index, row in original_df.iterrows():
+        channel = row['Channel']
+        print(channel, ':', index, '/', len(original_df.values))
+
+        try:
+            user_res = requests.get(f'https://api.twitch.tv/helix/users?login={channel}', headers=headers)
+            id = json.loads(user_res.text)['data'][0]['id']
+        except:
+            continue
+        try:
+            channel_res = requests.get(f'https://api.twitch.tv/helix/channels?broadcaster_id={id}', headers=headers)
+            channel = json.loads(channel_res.text)['data'][0]['game_name']
+        except:
+            continue
+
+        new_row_datas = row
+        new_row_datas['Category'] = channel
+        new_row = pd.Series(new_row_datas)
+        df = df.append(new_row)
+
+    df.drop(['Followers gained', 'Views gained', 'Watch time(Minutes)', 'Partnered'], axis=1, inplace=True)
+    df = df[(df['Category'] != '') & (df['Channel'] != '') & (df['Language'] != '')]
+
+    not_gaming = ['ASMR', 'Art', 'Chess', 'Codenames', 'Crypto', 'Music', 'OFF', 'Poker', 'Sports', 'UNDEFINED']
+
+
+    df = df[~(df['Category'].isin(not_gaming))]
+
+    return df
+
+
+
+# Data
 
 data_load_state = st.text('Loading data...')
-data = load_data(10000)
+data = load_data()
 data_load_state.text("Done! (using st.cache)")
 
-if st.checkbox('Show raw data'):
-    st.subheader('Raw data')
-    st.write(data)
+categories = data['Category'].unique()
+language = data['Language'].unique()
 
-st.subheader('Number of pickups by hour')
-hist_values = np.histogram(data[DATE_COLUMN].dt.hour, bins=24, range=(0,24))[0]
-st.bar_chart(hist_values)
 
-# Some number in the range 0-23
-hour_to_filter = st.slider('hour', 0, 23, 17)
-filtered_data = data[data[DATE_COLUMN].dt.hour == hour_to_filter]
 
-st.subheader('Map of all pickups at %s:00' % hour_to_filter)
-st.map(filtered_data)
+# Input components
+
+selected_categories = []
+selected_language = 'English'
+
+
+with st.expander('Choose streamer categories'):
+    for category in categories:
+        selected_categories.append(st.checkbox(category))
+
+selected_language = st.selectbox('Choose a streamer language', tuple(language))
+
+
+
+# Data visualization 
+
+filter_categories = []
+
+
+for i in range(len(selected_categories)):
+    if selected_categories[i]:
+        filter_categories.append(categories[i])
+gaming_groups = data[data['Category'].isin(filter_categories) & (data['Language'] == selected_language)]
+gaming_groups = gaming_groups.groupby('Category').mean().sort_values(by=['Average viewers'], ascending=False).head(10)
+gaming_average_viewers = gaming_groups['Average viewers']
+
+if len(gaming_average_viewers.values) > 0:
+    fig, ax = plt.subplots(figsize=(20, 10))
+
+    gaming_average_viewers.plot(kind='bar', title='', ylabel='Average viewers', xlabel='Categories', ax=ax)
+    fig.patch.set_facecolor('#0e1117')
+    ax.set_title('Average viewers for each gaming categories', fontsize=15, color='white');
+    ax.patch.set_facecolor('#0e1117')
+    ax.spines['left'].set_color('white')
+    ax.spines['bottom'].set_color('white')
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    st.pyplot(fig)
+else:
+    st.text('No data to show')
